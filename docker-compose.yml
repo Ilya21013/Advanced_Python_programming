@@ -1,0 +1,84 @@
+version: '3.9'
+
+services:
+  rabbitmq:
+    image: rabbitmq:management
+    container_name: rabbitmq_service
+    ports:
+      - "5673:5672"      # RabbitMQ message broker port
+      - "15673:15672"    # RabbitMQ management UI port
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmqctl status"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  features:
+    build:
+      context: ./features
+    container_name: features_service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      - RABBITMQ_HOST=rabbitmq    # Explicitly set RabbitMQ hostname
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/usr/src/app/logs
+    restart: on-failure
+
+  model:
+    build:
+      context: ./model
+    container_name: model_service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      features:
+        condition: service_started
+    environment:
+      - RABBITMQ_HOST=rabbitmq    # Explicitly set RabbitMQ hostname
+      - PYTHONUNBUFFERED=1
+    restart: on-failure
+
+  metric:
+    build:
+      context: ./metric
+    container_name: metric_service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      features:
+        condition: service_started
+      model:
+        condition: service_started
+    environment:
+      - RABBITMQ_HOST=rabbitmq    # Explicitly set RabbitMQ hostname
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/usr/src/app/logs
+    restart: on-failure
+
+  plot:
+    build:
+      context: ./plot
+    container_name: plot_service
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      metric:
+        condition: service_started
+      features:
+        condition: service_started
+      model:
+        condition: service_started
+    environment:
+      - RABBITMQ_HOST=rabbitmq    # Explicitly set RabbitMQ hostname
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./logs:/usr/src/app/logs
+    restart: unless-stopped
